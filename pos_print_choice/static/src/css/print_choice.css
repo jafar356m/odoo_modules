@@ -1,0 +1,87 @@
+/* Receipt enhancements */
+.pos-receipt {
+  font-family: "Inconsolata", monospace;
+  font-size: 13px;
+  line-height: 1.35;
+}
+.pos-receipt .pos-receipt-logo {
+  max-height: 120px;
+  margin-bottom: 6px;
+}
+.pos-receipt .o-pos-subheader {
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+.pos-receipt .pos-receipt-center-align,
+.pos-receipt .pos-receipt-right-align {
+  font-weight: 500;
+}
+.pos-receipt .pos-receipt-amount {
+  font-size: 15px;
+  font-weight: 700;
+  border-top: 1px dashed #444;
+  border-bottom: 1px dashed #444;
+  padding: 6px 0;
+}
+.pos-receipt .pos-receipt-tax-line,
+.pos-receipt .pos-receipt-left-padding {
+  margin-left: 6px;
+}
+.pos-receipt .pos-receipt-order-data {
+  border-top: 1px dashed #444;
+  margin-top: 8px;
+  padding-top: 6px;
+}
+.pos-receipt .orderlines > div {
+  padding: 2px 0;
+}
+.pos-receipt .pos-receipt-sep {
+  text-align: center;
+  color: #777;
+  margin: 4px 0;
+}
+
+/* Custom mode popup */
+.popup.popup-choice {
+  width: 520px;
+  max-width: 90vw;
+}
+.popup.popup-choice .title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+.popup.popup-choice .choice-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.popup.popup-choice .choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  background: #f7f7f7;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all .15s ease-in-out;
+}
+.popup.popup-choice .choice:hover {
+  border-color: #5b8def;
+  background: #eef3ff;
+}
+.popup.popup-choice .choice .icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+.popup.popup-choice .choice .label {
+  font-size: 16px;
+  font-weight: 600;
+}
+.popup.popup-choice .footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
