@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <!-- Inject a sub header in the POS receipt when provided by our module -->
+    <t t-extend="OrderReceipt">
+        <t t-jquery=".pos-receipt-contact" t-operation="after">
+            <div t-if="receipt.sub_header" class="pos-receipt-center-align o-pos-subheader" style="margin: 6px 0; font-weight: 600;">
+                <t t-esc="receipt.sub_header"/>
+            </div>
+        </t>
+    </t>
+</templates>

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <t t-name="PosPrintChoicePopup">
+        <div role="dialog" class="modal-dialog">
+            <div class="popup popup-choice">
+                <p class="title"><t t-esc=" widget.options.title || 'Choose print mode' "/></p>
+                <div class="choice-grid">
+                    <div class="choice js-choice" data-mode="consolidate">
+                        <div class="label">Consolidated Print</div>
+                    </div>
+                    <div class="choice js-choice" data-mode="individual">
+                        <div class="label">Individual Print</div>
+                    </div>
+                </div>
+                <div class="footer">
+                    <div class="button cancel">Cancel</div>
+                </div>
+            </div>
+        </div>
+    </t>
+</templates>
