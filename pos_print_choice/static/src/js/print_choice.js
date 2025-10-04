@@ -17,16 +17,19 @@ odoo.define('pos_print_choice.print_choice', function (require) {
     models.Order = models.Order.extend({
         initialize: function () {
             OrderSuper.initialize.apply(this, arguments);
-            this.print_mode = this.print_mode || null; // 'consolidate' | 'individual'
+            this.print_mode = this.print_mode || null; // legacy: 'consolidate' | 'individual'
+            this.print_mode_map = this.print_mode_map || {}; // per-product map: {product_id: 'consolidate'|'individual'}
         },
         export_as_JSON: function () {
             var json = OrderSuper.export_as_JSON.apply(this, arguments);
             json.print_mode = this.print_mode || false;
+            json.print_mode_map = this.print_mode_map || {};
             return json;
         },
         init_from_JSON: function (json) {
             OrderSuper.init_from_JSON.apply(this, arguments);
             this.print_mode = json.print_mode || null;
+            this.print_mode_map = json.print_mode_map || {};
         },
     });
 
@@ -50,6 +53,95 @@ odoo.define('pos_print_choice.print_choice', function (require) {
     gui.define_popup({ name: 'pos_print_choice_popup', widget: PrintChoicePopup });
 
     /*
+     * Build consolidated and individual env lists based on per-product map or legacy mode
+     */
+    function buildEnvSets(pos, order) {
+        var mode = order && order.print_mode; // legacy
+        var mode_map = order && order.print_mode_map || {};
+        var consolidated = [];
+        var individual = [];
+
+        function pushConsolidated(lines) {
+            var infos = [];
+            lines.forEach(function (l) { infos.push({ line: l, qty: l.get_quantity() }); });
+            var pname = lines[0] && lines[0].get_product().display_name;
+            consolidated.push(buildReceiptEnvForLines(pos, order, infos, _t('Consolidated: ') + (pname || '')));
+        }
+        function pushIndividual(line) {
+            var abs_qty = Math.abs(line.get_quantity());
+            var sign = line.get_quantity() >= 0 ? 1 : -1;
+            var int_qty = Math.floor(abs_qty);
+            var frac = abs_qty - int_qty;
+            for (var i = 0; i < int_qty; i++) {
+                var hdr = _t('Individual: ') + line.get_product().display_name + _t(' (1 unit)');
+                individual.push(buildReceiptEnvForLines(pos, order, [{ line: line, qty: 1 * sign }], hdr));
+            }
+            if (frac > 0.000001) {
+                var hdrf = _t('Individual: ') + line.get_product().display_name + ' (' + frac + ' )';
+                individual.push(buildReceiptEnvForLines(pos, order, [{ line: line, qty: frac * sign }], hdrf));
+            }
+        }
+
+        if (mode === 'consolidate') {
+            var grouped = {};
+            order.get_orderlines().forEach(function (line) {
+                var pid = line.get_product().id;
+                grouped[pid] = grouped[pid] || [];
+                grouped[pid].push(line);
+            });
+            _.each(grouped, function (lines) { pushConsolidated(lines); });
+        } else if (mode === 'individual') {
+            order.get_orderlines().forEach(function (line) { pushIndividual(line); });
+        } else if (!_.isEmpty(mode_map)) {
+            var grouped2 = {};
+            order.get_orderlines().forEach(function (line) {
+                var pid = line.get_product().id;
+                grouped2[pid] = grouped2[pid] || [];
+                grouped2[pid].push(line);
+            });
+            _.each(grouped2, function (lines, pid) {
+                var choice = mode_map[pid] || 'consolidate';
+                if (choice === 'consolidate') {
+                    pushConsolidated(lines);
+                } else {
+                    lines.forEach(function (l) { pushIndividual(l); });
+                }
+            });
+        }
+
+        return { consolidated: consolidated, individual: individual };
+    }
+
+    /*
+     * Per-product choice popup: list products and let user choose mode per product
+     */
+    var PrintChoicePerProductPopup = PopupWidget.extend({
+        template: 'PosPrintChoicePerProductPopup',
+        show: function (options) {
+            options = options || {};
+            this._super(options);
+            var self = this;
+            // Preselect defaults
+            _.each(this.options.items || [], function (it) {
+                var def = (self.options.defaults && self.options.defaults[it.product_id]) || 'consolidate';
+                self.$('input[name="choice-' + it.product_id + '"][value="' + def + '"]').prop('checked', true);
+            });
+            this.$('.button.confirm').off('click').on('click', function(){
+                var selections = {};
+                _.each(self.options.items || [], function (it) {
+                    var val = self.$('input[name="choice-' + it.product_id + '"]:checked').val() || 'consolidate';
+                    selections[it.product_id] = val;
+                });
+                self.gui.close_popup();
+                if (self.options && self.options.confirm) {
+                    self.options.confirm.call(self, selections);
+                }
+            });
+        },
+    });
+    gui.define_popup({ name: 'pos_print_choice_per_product_popup', widget: PrintChoicePerProductPopup });
+
+    /*
      * Ask user before validation how to print.
      */
     screens.PaymentScreenWidget.include({
@@ -63,11 +155,26 @@ odoo.define('pos_print_choice.print_choice', function (require) {
                 return;
             }
 
-            // Use custom visual popup
-            this.gui.show_popup('pos_print_choice_popup', {
-                title: _t('Choose print mode'),
-                confirm: function (mode) {
-                    order.print_mode = mode;
+            // Build item list aggregated by product for per-product choice
+            var byProduct = {};
+            order.get_orderlines().forEach(function (line) {
+                var pid = line.get_product().id;
+                if (!byProduct[pid]) {
+                    byProduct[pid] = { product_id: pid, name: line.get_product().display_name, qty: 0 };
+                }
+                byProduct[pid].qty += line.get_quantity();
+            });
+            var items = _.values(byProduct);
+
+            // Show per-product popup
+            this.gui.show_popup('pos_print_choice_per_product_popup', {
+                title: _t('Choose print mode per product'),
+                items: items,
+                defaults: order.print_mode_map || {},
+                confirm: function (selections) {
+                    // store map and clear single-mode
+                    order.print_mode_map = selections || {};
+                    order.print_mode = null;
                     // Continue with normal validation flow
                     return _super_validate(force_validation);
                 },
@@ -170,104 +277,32 @@ odoo.define('pos_print_choice.print_choice', function (require) {
         show: function(){
             this._super.apply(this, arguments);
             var order = this.pos.get_order();
-            if (order && order.print_mode){
-                // Build a preview of all sub-receipts inside the receipt container
-                var mode = order.print_mode;
-                var envs = [];
-                var self = this;
+            if (order && (order.print_mode || (order.print_mode_map && !_.isEmpty(order.print_mode_map)))){
+                var sets = buildEnvSets(this.pos, order);
+                var envs = sets.consolidated.concat(sets.individual);
 
-                if (mode === 'consolidate') {
-                    var grouped = {};
-                    order.get_orderlines().forEach(function (line) {
-                        var pid = line.get_product().id;
-                        grouped[pid] = grouped[pid] || [];
-                        grouped[pid].push(line);
-                    });
-                    _.each(grouped, function (lines) {
-                        var lineInfos = [];
-                        lines.forEach(function (l) {
-                            lineInfos.push({ line: l, qty: l.get_quantity() });
-                        });
-                        var pname = lines[0] && lines[0].get_product().display_name;
-                        envs.push(buildReceiptEnvForLines(self.pos, order, lineInfos, _t('Consolidated: ') + (pname || '')));
-                    });
-                } else if (mode === 'individual') {
-                    order.get_orderlines().forEach(function (line) {
-                        var abs_qty = Math.abs(line.get_quantity());
-                        var sign = line.get_quantity() >= 0 ? 1 : -1;
-                        var int_qty = Math.floor(abs_qty);
-                        var frac = abs_qty - int_qty;
-
-                        for (var i = 0; i < int_qty; i++) {
-                            var headerTxt = _t('Individual: ') + line.get_product().display_name + _t(' (1 unit)');
-                            envs.push(buildReceiptEnvForLines(self.pos, order, [{ line: line, qty: 1 * sign }], headerTxt));
-                        }
-                        if (frac > 0.000001) {
-                            var headerFrac = _t('Individual: ') + line.get_product().display_name + ' (' + frac + ' )';
-                            envs.push(buildReceiptEnvForLines(self.pos, order, [{ line: line, qty: frac * sign }], headerFrac));
-                        }
-                    });
+                var htmlCombined = '';
+                for (var j = 0; j < envs.length; j++) {
+                    htmlCombined += '<div class="ppc-card" margin-bottom:8px;">';
+                    htmlCombined += QWeb.render('OrderReceipt', envs[j]);
+                    htmlCombined += '</div>';
                 }
-
-                if (envs.length) {
-                    var htmlCombined = '';
-                    for (var j = 0; j < envs.length; j++) {
-                        htmlCombined += QWeb.render('OrderReceipt', envs[j]);
-                        if (j !== envs.length - 1) {
-                            htmlCombined += '<div style="page-break-after: always;"></div>';
-                        }
-                    }
-                    this.$('.pos-receipt-container').html(htmlCombined);
-                }
+                this.$('.pos-receipt-container').html(htmlCombined);
             }
         },
         print: function () {
             var self = this;
             var order = this.pos.get_order();
-            var mode = order && order.print_mode;
+            var mode = order && order.print_mode; // legacy
+            var mode_map = order && order.print_mode_map;
 
-            if (!mode) {
+            if (!mode && (!mode_map || _.isEmpty(mode_map))) {
                 return this._super.apply(this, arguments);
             }
 
-            // Collect all sub-receipt environments we want to print
-            var envs = [];
-
-            if (mode === 'consolidate') {
-                // One ticket per product (all quantities of that product)
-                var grouped = {};
-                order.get_orderlines().forEach(function (line) {
-                    var pid = line.get_product().id;
-                    grouped[pid] = grouped[pid] || [];
-                    grouped[pid].push(line);
-                });
-
-                _.each(grouped, function (lines) {
-                    var lineInfos = [];
-                    lines.forEach(function (l) {
-                        lineInfos.push({ line: l, qty: l.get_quantity() });
-                    });
-                    var pname = lines[0] && lines[0].get_product().display_name;
-                    envs.push(buildReceiptEnvForLines(self.pos, order, lineInfos, _t('Consolidated: ') + (pname || '')));
-                });
-            } else if (mode === 'individual') {
-                // One ticket per unit of quantity (with a final fractional ticket if needed)
-                order.get_orderlines().forEach(function (line) {
-                    var abs_qty = Math.abs(line.get_quantity());
-                    var sign = line.get_quantity() >= 0 ? 1 : -1;
-                    var int_qty = Math.floor(abs_qty);
-                    var frac = abs_qty - int_qty;
-
-                    for (var i = 0; i < int_qty; i++) {
-                        var headerTxt = _t('Individual: ') + line.get_product().display_name + _t(' (1 unit)');
-                        envs.push(buildReceiptEnvForLines(self.pos, order, [{ line: line, qty: 1 * sign }], headerTxt));
-                    }
-                    if (frac > 0.000001) {
-                        var headerFrac = _t('Individual: ') + line.get_product().display_name + ' (' + frac + ' )';
-                        envs.push(buildReceiptEnvForLines(self.pos, order, [{ line: line, qty: frac * sign }], headerFrac));
-                    }
-                });
-            }
+            // Build env sets and always print all (both consolidated and individual based on selections)
+            var sets = buildEnvSets(this.pos, order);
+            var envs = sets.consolidated.concat(sets.individual);
 
             // If nothing to print, fallback
             if (!envs.length) {

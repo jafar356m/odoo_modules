@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates id="template" xml:space="preserve">
+    <!-- Per-product selection popup -->
+    <t t-name="PosPrintChoicePerProductPopup">
+        <div role="dialog" class="modal-dialog">
+            <div class="popup popup-choice ppc-popup">
+                <p class="title">
+                    <t t-esc="widget.options.title or 'Choose print mode per product'"/>
+                </p>
+                <div class="ppc-body">
+                    <div class="ppc-header-row">
+                        <div class="ppc-col-name">Product</div>
+                        <div class="ppc-col-modes">Mode</div>
+                    </div>
+                    <div class="ppc-list">
+                        <t t-foreach="widget.options.items or []" t-as="it">
+                            <div class="ppc-row">
+                                <div class="ppc-col-name">
+                                    <div class="ppc-product-name"><t t-esc="it.name"/></div>
+                                    <div t-if="it.qty != null" class="ppc-product-qty">Qty: <t t-esc="it.qty"/></div>
+                                </div>
+                                <div class="ppc-col-modes">
+                                    <label class="ppc-radio">
+                                        <input type="radio" t-att-name="'choice-' + it.product_id" value="consolidate"/>
+                                        <span>Consolidated</span>
+                                    </label>
+                                    <label class="ppc-radio">
+                                        <input type="radio" t-att-name="'choice-' + it.product_id" value="individual"/>
+                                        <span>Individual</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </t>
+                    </div>
+                </div>
+                <div class="footer ppc-footer">
+                    <div class="button cancel">Cancel</div>
+                    <div class="spacer"></div>
+                    <div class="button confirm primary">Submit</div>
+                </div>
+            </div>
+        </div>
+    </t>
+</templates>

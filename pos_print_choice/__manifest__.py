@@ -14,6 +14,7 @@
     'qweb': [
         'static/src/xml/print_choice.xml',
         'static/src/xml/print_choice_popup.xml',
+        'static/src/xml/print_choice_per_product_popup.xml',
     ],
     'installable': True,
     'application': False,
